@@ -1,6 +1,6 @@
 {
   "name": "brewpage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Publish a file or stdin to brewpage.app from the terminal and get one share link",
   "type": "module",
   "bin": {

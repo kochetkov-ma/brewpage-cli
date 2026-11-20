@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.1.1
+
+- Clearer messages after publishing: instead of a note written for AI agents about the new owner token, you now see one plain line saying the owner token and management link were saved to your receipts file, which you should keep private. Other server notices show as before.
+
 ## 0.1.0
 
 First release: publish from the terminal to [BrewPage](https://brewpage.app) and get one share link.

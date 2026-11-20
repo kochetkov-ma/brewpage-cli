@@ -6,6 +6,8 @@ import { CliError, EXIT, VERSION, baseUrl, clean, fileLimit, getLimits, mb, over
 import { receiptRecord, receiptsPath, saveReceipt } from "./receipts.js";
 
 const FORMATS = ["html", "markdown", "text"];
+// Server notice addressed to API agents about a new owner token; the CLI keeps it and says so in its own line.
+const TOKEN_NOTICE = "owner-token-new";
 const OPTIONS = {
   public: { type: "boolean" },
   ttl: { type: "string" },
@@ -161,11 +163,17 @@ async function run(argv, env, stdin, stdout, say) {
     if (answer.expiresAt) say(`Expires: ${clean(answer.expiresAt)}`);
     if (answer.access) say(`Access: ${clean(answer.access)}`);
   }
-  for (const notice of Array.isArray(answer.notices) ? answer.notices : []) {
-    if (notice?.message) say(`Notice: ${clean(notice.message)}`);
+  const notices = Array.isArray(answer.notices) ? answer.notices : [];
+  for (const notice of notices) {
+    if (notice?.message && notice.code !== TOKEN_NOTICE) say(`Notice: ${clean(notice.message)}`);
   }
   const code = await keep(answer, receipts, say);
-  if (code === EXIT.OK && receipts !== undefined && !options.quiet) say(`Receipt: ${receipts} (private: management link and owner token)`);
+  if (code !== EXIT.OK || receipts === undefined) return code;
+  if (notices.some((notice) => notice?.code === TOKEN_NOTICE)) {
+    say(`Saved your owner token and management link to ${receipts}; keep that file private.`);
+  } else if (!options.quiet) {
+    say(`Receipt: ${receipts} (private: management link and owner token)`);
+  }
   return code;
 }
 

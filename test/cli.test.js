@@ -29,6 +29,12 @@ const shown = (access = "unlisted") => `Expires: ${EXPIRES_AT}\nAccess: ${access
 const receiptLine = (ctx) => `Receipt: ${ctx.receipts} (private: management link and owner token)\n`;
 const privateLines = `PRIVATE management link (edit or delete; keep it secret): ${MANAGE_URL}\n`
   + `PRIVATE owner token (keep it secret): ${OWNER_TOKEN}\n`;
+const TOKEN_NOTICE = {
+  code: "owner-token-new",
+  message: "New ownerToken: keep it; send it as X-Owner-Token on later publishes and updates. "
+    + "Give the user link and manageUrl (private: it edits or deletes this publication).",
+};
+const savedLine = (ctx) => `Saved your owner token and management link to ${ctx.receipts}; keep that file private.\n`;
 
 const row = (name, spec) => ({
   files: {}, stdin: () => Readable.from([]), stub: {}, setup: async () => undefined,
@@ -52,6 +58,39 @@ const ROWS = [
       code: 0, stdout: `${LINK}\n`,
       stderr: `${shown()}Notice: This Markdown file was published as a page at ${LINK}\n${receiptLine(ctx)}`,
       requests: [LIMITS_GET, filePost("/api/files", "notes.md", "# Notes\n")], receipt: saved(),
+    }),
+  }),
+  row("GIVEN a new-owner-token notice and an unknown notice WHEN published THEN the token one becomes the saved line and the unknown one passes unchanged", {
+    files: { "page.html": "<p>Token</p>" },
+    stub: { reply: published({ notices: [TOKEN_NOTICE, { code: "future-advice", message: "Something new from the server." }] }) },
+    argv: (ctx) => [ctx.path("page.html")],
+    expected: (ctx) => ({
+      code: 0, stdout: `${LINK}\n`, stderr: `${shown()}Notice: Something new from the server.\n${savedLine(ctx)}`,
+      requests: [LIMITS_GET, filePost("/api/files", "page.html", "<p>Token</p>")], receipt: saved(),
+    }),
+  }),
+  row("GIVEN a new-owner-token notice and --no-save WHEN published THEN only the edit-and-delete-lost warning stands in for it", {
+    stdin: () => Readable.from([Buffer.from("no receipt\n")]),
+    stub: { reply: published({ notices: [TOKEN_NOTICE] }) },
+    argv: () => ["-", "--no-save"],
+    expected: () => ({
+      code: 0, stdout: `${LINK}\n`, stderr: `${shown()}Not saved (--no-save): you cannot edit or delete this publication later.\n`,
+      requests: [LIMITS_GET, textPost("/api/html", "text/plain", "no receipt\n")], receipt: NOTHING_SAVED,
+    }),
+  }),
+  row("GIVEN a new-owner-token notice and an unwritable receipts dir WHEN published THEN it claims no save and exits 7 with PRIVATE lines", {
+    files: { "page.html": "<p>Unsaved</p>" },
+    stub: { reply: published({ notices: [TOKEN_NOTICE] }) },
+    setup: async (ctx) => {
+      await mkdir(ctx.state);
+      await chmod(ctx.state, 0o500);
+    },
+    argv: (ctx) => [ctx.path("page.html")],
+    expected: (ctx) => ({
+      code: 7, stdout: `${LINK}\n`,
+      stderr: `${shown()}brewpage: could not save the receipt at ${ctx.receipts}: EACCES.\n${privateLines}`,
+      requests: [LIMITS_GET, filePost("/api/files", "page.html", "<p>Unsaved</p>")],
+      receipt: { dir: "500", file: "absent", lines: [] },
     }),
   }),
   row("GIVEN a png file WHEN published THEN its bytes are uploaded unchanged", {

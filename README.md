@@ -19,10 +19,10 @@ brew install kochetkov-ma/brew/brewpage
 From the GitHub Release (Node.js 22 or newer):
 
 ```bash
-curl -fLO https://github.com/kochetkov-ma/brewpage-cli/releases/download/v0.1.0/brewpage-0.1.0.tgz
-curl -fLO https://github.com/kochetkov-ma/brewpage-cli/releases/download/v0.1.0/SHA256SUMS
+curl -fLO https://github.com/kochetkov-ma/brewpage-cli/releases/download/v0.1.1/brewpage-0.1.1.tgz
+curl -fLO https://github.com/kochetkov-ma/brewpage-cli/releases/download/v0.1.1/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-npm install -g ./brewpage-0.1.0.tgz
+npm install -g ./brewpage-0.1.1.tgz
 ```
 
 npm: coming soon.
@@ -56,7 +56,7 @@ HTML and Markdown files become pages; other files are shared as files. Before up
 ## Output
 
 - stdout: the link only, so scripts can capture it.
-- stderr: expiry, access, the receipt path, notices and errors.
+- stderr: expiry, access, the receipt path, notices and errors. When the server issues a new owner token, the CLI saves it and says so in one line naming the receipts file.
 
 ## Exit codes
 
@@ -83,7 +83,7 @@ A line holds `link`, the management link (`manageUrl`, or `managementLink` when 
 
 Keep the management link and the owner token private: anyone who has them can edit or delete the publication. They never go to stdout. If the receipt cannot be saved, the link still goes to stdout, the management link and owner token go to stderr marked PRIVATE, and the CLI exits with 7: copy them somewhere safe.
 
-The CLI sends BrewPage only your content, its file name and your options. Every request carries `User-Agent: brewpage-cli/0.1.0` and `X-BrewPage-Client: cli/0.1.0`, so BrewPage can count publishes made with the CLI.
+The CLI sends BrewPage only your content, its file name and your options. Every request carries `User-Agent: brewpage-cli/<version>` and `X-BrewPage-Client: cli/<version>`, so BrewPage can count publishes made with the CLI.
 
 ## Environment
 
