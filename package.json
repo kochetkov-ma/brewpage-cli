@@ -1,0 +1,44 @@
+{
+  "name": "brewpage",
+  "version": "0.1.0",
+  "description": "Publish a file or stdin to brewpage.app from the terminal and get one share link",
+  "type": "module",
+  "bin": {
+    "brewpage": "bin/brewpage.js"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "brewpage",
+    "cli",
+    "publish",
+    "share",
+    "link",
+    "hosting",
+    "html",
+    "markdown",
+    "pastebin",
+    "stdin"
+  ],
+  "author": {
+    "name": "Maksim Kochetkov",
+    "url": "https://github.com/kochetkov-ma"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kochetkov-ma/brewpage-cli.git"
+  },
+  "homepage": "https://github.com/kochetkov-ma/brewpage-cli#readme",
+  "bugs": {
+    "url": "https://github.com/kochetkov-ma/brewpage-cli/issues"
+  }
+}
