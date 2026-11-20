@@ -8,13 +8,14 @@
   },
   "files": [
     "bin/",
-    "src/"
+    "src/",
+    "RELEASE-NOTES.md"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "brewpage",
