@@ -1,0 +1,126 @@
+name: npm publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose tarball is published, for example v0.1.0
+        required: true
+        type: string
+      dry_run:
+        description: Dry run, nothing is published
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+
+      - name: Install pinned npm with trusted publishing support
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.14.1
+          [[ "$(npm --version)" == 11.14.1 ]]
+
+      - name: Download the Release tarball and verify its checksum
+        id: dl
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          VERSION="${RELEASE_TAG#v}"
+          mkdir "$RUNNER_TEMP/dist"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/dist" --pattern "brewpage-${VERSION}.tgz" --pattern SHA256SUMS
+          cd "$RUNNER_TEMP/dist"
+          [[ "$(find . -type f | LC_ALL=C sort | tr '\n' ' ')" == "./SHA256SUMS ./brewpage-${VERSION}.tgz " ]]
+          shasum -a 256 -c SHA256SUMS
+          tar -xzOf "brewpage-${VERSION}.tgz" package/package.json > package.json
+          [[ "$(node -p "require('./package.json').version")" == "$VERSION" ]]
+          {
+            echo "tarball=$RUNNER_TEMP/dist/brewpage-${VERSION}.tgz"
+            echo "name=$(node -p "require('./package.json').name")"
+            echo "version=${VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check if version already published
+        id: check
+        env:
+          PKG_NAME: ${{ steps.dl.outputs.name }}
+          PKG_VERSION: ${{ steps.dl.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version --json > "$RUNNER_TEMP/npm-version.json" 2> "$RUNNER_TEMP/npm-version.err"; then
+            node -e 'const fs=require("fs"); if(JSON.parse(fs.readFileSync(process.argv[1],"utf8"))!==process.argv[2]) process.exit(1)' "$RUNNER_TEMP/npm-version.json" "$PKG_VERSION"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${PKG_VERSION} already published, skipping"
+          elif node -e 'const fs=require("fs"); try {if(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).error.code!=="E404") process.exit(1)} catch {process.exit(1)}' "$RUNNER_TEMP/npm-version.json"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            if npm view "$PKG_NAME" name > /dev/null 2>&1; then
+              echo "Version ${PKG_VERSION} not found, will publish"
+            elif [[ "$DRY_RUN" == true ]]; then
+              echo "::warning::${PKG_NAME} is not on npm yet; a real publish would stop here until the owner does the first publish and sets the trusted publisher"
+            else
+              echo "::error::${PKG_NAME} is not on npm yet: the first publish needs the owner (npm sign-in), then a trusted publisher for this workflow (npm-publish.yml, environment empty); rerun after that"
+              exit 1
+            fi
+          else
+            echo '::error::npm version lookup failed; publication stopped'
+            exit 1
+          fi
+
+      - name: Publish to npm
+        if: steps.check.outputs.exists != 'true'
+        env:
+          TARBALL: ${{ steps.dl.outputs.tarball }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=(--access public --provenance)
+          if [[ "$DRY_RUN" == true ]]; then
+            ARGS+=(--dry-run)
+          fi
+          if ! npm publish "$TARBALL" "${ARGS[@]}"; then
+            echo '::error::npm publish failed; if it says 404, ENEEDAUTH or an OIDC error, the trusted publisher of this package is missing or does not name npm-publish.yml'
+            exit 1
+          fi
+
+      - name: Version gate
+        if: inputs.dry_run != true
+        env:
+          PKG_NAME: ${{ steps.dl.outputs.name }}
+          PKG_VERSION: ${{ steps.dl.outputs.version }}
+        run: |
+          set -euo pipefail
+          DEADLINE=$((SECONDS + 600))
+          while true; do
+            SEEN=$(npm view "${PKG_NAME}@${PKG_VERSION}" version 2> /dev/null || true)
+            if [[ "$SEEN" == "$PKG_VERSION" ]]; then
+              echo "npm serves ${PKG_NAME}@${PKG_VERSION}"
+              break
+            fi
+            if (( SECONDS >= DEADLINE )); then
+              echo "::error::npm did not serve ${PKG_NAME}@${PKG_VERSION} within 10 minutes"
+              exit 1
+            fi
+            echo "not served yet; retrying in 15 s"
+            sleep 15
+          done

@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+
+      - name: Tag matches package version
+        id: ver
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$RELEASE_TAG" != "v${VERSION}" ]]; then
+            echo "::error::tag ${RELEASE_TAG} != v${VERSION} from package.json"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: npm test
+
+      - name: Pack and checksum
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/dist"
+          npm pack --pack-destination "$RUNNER_TEMP/dist"
+          cd "$RUNNER_TEMP/dist"
+          [[ "$(find . -type f)" == "./brewpage-${VERSION}.tgz" ]]
+          shasum -a 256 "brewpage-${VERSION}.tgz" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release notes from RELEASE-NOTES.md
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v head="## ${VERSION}" '$0 == head || index($0, head " ") == 1 {on = 1; next} on && /^## / {exit} on {print}' RELEASE-NOTES.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error file=RELEASE-NOTES.md::no '## ${VERSION}' section; write the people-facing notes before tagging"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: brewpage ${{ steps.ver.outputs.version }}
+          body_path: ${{ runner.temp }}/notes.md
+          files: |
+            ${{ runner.temp }}/dist/brewpage-${{ steps.ver.outputs.version }}.tgz
+            ${{ runner.temp }}/dist/SHA256SUMS
+          fail_on_unmatched_files: true
